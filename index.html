@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Chess.com E-Ink</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:sans-serif;background:#f4f4f4;color:#111;display:flex;flex-direction:column;align-items:center;padding:8px;user-select:none}
+  .wrap{width:368px;max-width:96vw}
+  .hdr{display:flex;justify-content:space-between;align-items:center;padding:4px 2px 8px;border-bottom:2px solid #000;margin-bottom:6px}
+  .logo{font-size:18px;font-weight:900}
+  .logo span{background:#000;color:#fff;padding:1px 5px;border-radius:3px;margin-right:4px}
+  #status{font-size:13px;font-weight:700;background:#fff;border:1.5px solid #000;padding:3px 8px;border-radius:4px}
+  .pbar{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1.5px solid #000;padding:6px 8px;margin:5px 0;border-radius:4px}
+  .pinfo{display:flex;align-items:center;gap:8px}
+  .av{width:28px;height:28px;background:#222;color:#fff;font-weight:bold;font-size:16px;display:flex;align-items:center;justify-content:center;border-radius:4px;border:1.5px solid #000}
+  .av.you{background:#fff;color:#000}
+  .pname{font-size:14px;font-weight:800;line-height:1.1}
+  .pelo{font-size:11px;color:#444;font-weight:600}
+  .cap{font-size:15px;letter-spacing:-2px;min-height:18px;font-weight:bold}
+  table#grid{width:100%;border-collapse:collapse;border:3px solid #000;background:#fff;table-layout:fixed}
+  table#grid td{height:45px;text-align:center;vertical-align:middle;font-size:33px;cursor:pointer;position:relative;line-height:1}
+  .w{background:#f2f2f2;color:#000}
+  .b{background:#a6a6a6;color:#000}
+  .last{background:#d4d4d4!important;box-shadow:inset 0 0 0 2px #000}
+  .sel{background:#777!important;box-shadow:inset 0 0 0 3px #000}
+  .mov::after{content:"";position:absolute;top:50%;left:50%;width:13px;height:13px;margin:-6.5px 0 0 -6.5px;background:rgba(0,0,0,.55);border-radius:50%}
+  .cap-sq::after{content:"";position:absolute;top:3px;left:3px;right:3px;bottom:3px;border:3px solid rgba(0,0,0,.7);border-radius:50%}
+  .cr{position:absolute;top:2px;left:3px;font-size:10px;font-weight:800;line-height:1}
+  .cf{position:absolute;bottom:2px;right:3px;font-size:10px;font-weight:800;line-height:1}
+  .bar{display:flex;gap:5px;margin-top:8px}
+  button,select{flex:1;padding:9px 4px;font-size:12px;font-weight:800;background:#fff;color:#000;border:2px solid #000;border-radius:5px;cursor:pointer}
+  button.pri{background:#000;color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr"><div class="logo"><span>♟</span>Chess.com</div><div id="status">Your Turn</div></div>
+  <div class="pbar"><div class="pinfo"><div class="av" id="bAv">♞</div><div><div class="pname" id="bName">Nelson Bot</div><div class="pelo" id="bElo">Rating: 1100</div></div></div><div class="cap" id="cBot"></div></div>
+  <table id="grid"></table>
+  <div class="pbar"><div class="pinfo"><div class="av you" id="yAv">♙</div><div><div class="pname" id="yName">You (White)</div><div class="pelo">Kobo Libra H2O</div></div></div><div class="cap" id="cYou"></div></div>
+  <div class="bar"><button class="pri" onclick="init()">New</button><button onclick="flipSide()" id="sideBtn">Play: White</button><button onclick="undo()">Undo</button><select id="lvl" onchange="botLbl()"><option value="1">Jimmy (400)</option><option value="2" selected>Nelson (1100)</option></select></div>
+</div>
+<script>
+var B="",turn='w',me='w',sel=-1,valid="",hist="",lastF=-1,lastT=-1,FILES="abcdefgh";
+var tbl=document.getElementById('grid');
+for(var r=0;r<8;r++){var tr=document.createElement('tr');for(var c=0;c<8;c++){var td=document.createElement('td');td.id='cell'+(r*8+c);tr.appendChild(td);}tbl.appendChild(tr);}
+
+function sym(c){var m={P:'♙',N:'♘',B:'♗',R:'♖',Q:'♕',K:'♔',p:'♟',n:'♞',b:'♝',r:'♜',q:'♛',k:'♚'};return m[c]||'';}
+function isW(c){return c>='A'&&c<='Z';}
+function isB(c){return c>='a'&&c<='z';}
+function same(c,s){return s==='w'?isW(c):isB(c);}
+function opp(c,s){return s==='w'?isB(c):isW(c);}
+function setCh(s,i,ch){return s.substring(0,i)+ch+s.substring(i+1);}
+function botLbl(){var v=document.getElementById('lvl').value;document.getElementById('bName').innerHTML=v==='1'?"Jimmy Bot":"Nelson Bot";document.getElementById('bElo').innerHTML=v==='1'?"Rating: 400":"Rating: 1100";}
+
+function upCap(){
+  var sW="PPPPPPPPNNBBRRQ",sB="ppppppppnnbbrrq";
+  for(var i=0;i<64;i++){var ch=B.charAt(i);if(isW(ch))sW=sW.replace(ch,'');if(isB(ch))sB=sB.replace(ch,'');}
+  var wI="",bI="";
+  for(var i=0;i<sB.length;i++)wI+=sym(sB.charAt(i));
+  for(var i=0;i<sW.length;i++)bI+=sym(sW.charAt(i));
+  document.getElementById('cYou').innerHTML=me==='w'?wI:bI;
+  document.getElementById('cBot').innerHTML=me==='w'?bI:wI;
+}
+
+function flipSide(){me=me==='w'?'b':'w';init();}
+
+function init(){
+  B="rnbqkbnrpppppppp................................PPPPPPPPRNBQKBNR";
+  turn='w';sel=-1;valid="";hist="";lastF=-1;lastT=-1;
+  document.getElementById('sideBtn').innerHTML=me==='w'?"Play: White":"Play: Black";
+  document.getElementById('yName').innerHTML=me==='w'?"You (White)":"You (Black)";
+  document.getElementById('yAv').innerHTML=me==='w'?"♙":"♟";
+  document.getElementById('bAv').innerHTML=me==='w'?"♞":"♘";
+  botLbl();
+  if(me==='b'){document.getElementById('status').innerHTML="Thinking...";draw();setTimeout(aiPlay,250);}
+  else{document.getElementById('status').innerHTML="Your Turn";draw();}
+}
+
+function draw(){
+  for(var pos=0;pos<64;pos++){
+    var i=me==='w'?pos:63-pos;
+    var td=document.getElementById('cell'+pos),ch=B.charAt(i),r=Math.floor(i/8),c=i%8;
+    var pr=Math.floor(pos/8),pc=pos%8;
+    var h=ch==='.'?'':sym(ch);
+    if(pc===0)h+='<span class="cr">'+(8-r)+'</span>';
+    if(pr===7)h+='<span class="cf">'+FILES.charAt(c)+'</span>';
+    td.innerHTML=h;
+    td.className=(r+c)%2===0?'w':'b';
+    if(i===lastF||i===lastT)td.className+=' last';
+    if(sel===i)td.className+=' sel';
+    if(valid.indexOf(','+i+',')!==-1)td.className+=(ch!=='.'?' cap-sq':' mov');
+  }
+  upCap();
+}
+
+function getMoves(idx,bs){
+  var p=bs.charAt(idx);if(p==='.')return"";
+  var s=isW(p)?'w':'b',t=p.toLowerCase(),r=Math.floor(idx/8),c=idx%8,res=",";
+  function add(nr,nc){if(nr>=0&&nr<8&&nc>=0&&nc<8){var ti=nr*8+nc,tg=bs.charAt(ti);if(!same(tg,s))res+=ti+",";return tg==='.';}return false;}
+  if(t==='p'){
+    var d=s==='w'?-1:1,st=s==='w'?6:1;
+    if(r+d>=0&&r+d<8&&bs.charAt((r+d)*8+c)==='.'){res+=((r+d)*8+c)+",";if(r===st&&bs.charAt((r+2*d)*8+c)==='.')res+=((r+2*d)*8+c)+",";}
+    if(c>0&&r+d>=0&&r+d<8&&opp(bs.charAt((r+d)*8+c-1),s))res+=((r+d)*8+c-1)+",";
+    if(c<7&&r+d>=0&&r+d<8&&opp(bs.charAt((r+d)*8+c+1),s))res+=((r+d)*8+c+1)+",";
+  }else if(t==='n'){add(r-2,c-1);add(r-2,c+1);add(r-1,c-2);add(r-1,c+2);add(r+1,c-2);add(r+1,c+2);add(r+2,c-1);add(r+2,c+1);}
+  else if(t==='k'){for(var dr=-1;dr<=1;dr++)for(var dc=-1;dc<=1;dc++)if(dr||dc)add(r+dr,c+dc);}
+  else{
+    function sl(dr,dc){var nr=r+dr,nc=c+dc;while(add(nr,nc)){nr+=dr;nc+=dc;}}
+    if(t==='r'||t==='q'){sl(-1,0);sl(1,0);sl(0,-1);sl(0,1);}
+    if(t==='b'||t==='q'){sl(-1,-1);sl(-1,1);sl(1,-1);sl(1,1);}
+  }
+  return res;
+}
+
+function appM(bs,f,t){var p=bs.charAt(f);if(p==='P'&&t<8)p='Q';if(p==='p'&&t>55)p='q';return setCh(setCh(bs,t,p),f,'.');}
+
+function scB(bs,botSide){
+  var sc=0;
+  for(var i=0;i<64;i++){var c=bs.charAt(i),v=0,l=c.toLowerCase();if(l==='p')v=10;else if(l==='n'||l==='b')v=30;else if(l==='r')v=50;else if(l==='q')v=90;else if(l==='k')v=900;if(same(c,botSide))sc+=v;else if(opp(c,botSide))sc-=v;}
+  return sc;
+}
+
+function aiPlay(){
+  var bot=me==='w'?'b':'w',bSc=-99999,bF=-1,bT=-1,dp=parseInt(document.getElementById('lvl').value);
+  for(var i=0;i<64;i++)if(same(B.charAt(i),bot)){
+    var mvs=getMoves(i,B).split(',');
+    for(var j=0;j<mvs.length;j++){
+      var ts=mvs.slice(j,j+1).join('');if(!ts)continue;
+      var t=parseInt(ts),b1=appM(B,i,t),sc=scB(b1,bot)+Math.random()*2;
+      if(dp===2){
+        var wr=99999;
+        for(var k=0;k<64;k++)if(same(b1.charAt(k),me)){
+          var wm=getMoves(k,b1).split(',');
+          for(var w=0;w<wm.length;w++){var ws=wm.slice(w,w+1).join('');if(!ws)continue;var s2=scB(appM(b1,k,parseInt(ws)),bot);if(s2<wr)wr=s2;}
+        }
+        sc=wr+Math.random()*2;
+      }
+      if(sc>bSc){bSc=sc;bF=i;bT=t;}
+    }
+  }
+  var myKing=me==='w'?'K':'k';
+  if(bF!==-1){B=appM(B,bF,bT);lastF=bF;lastT=bT;turn=me;document.getElementById('status').innerHTML=B.indexOf(myKing)===-1?"Checkmate! Bot Wins":"Your Turn";}
+  else document.getElementById('status').innerHTML="Game Over";
+  draw();
+}
+
+function tapPos(pos){
+  if(turn!==me)return;
+  var i=me==='w'?pos:63-pos;
+  var bot=me==='w'?'b':'w',botKing=bot==='w'?'K':'k';
+  if(sel!==-1&&valid.indexOf(','+i+',')!==-1){
+    hist=B;B=appM(B,sel,i);lastF=sel;lastT=i;sel=-1;valid="";
+    if(B.indexOf(botKing)===-1){document.getElementById('status').innerHTML="Checkmate! You Win!";draw();return;}
+    turn=bot;document.getElementById('status').innerHTML="Thinking...";draw();setTimeout(aiPlay,200);return;
+  }
+  if(same(B.charAt(i),me)){sel=i;valid=getMoves(i,B);}else{sel=-1;valid="";}
+  draw();
+}
+
+function undo(){if(hist&&turn===me){B=hist;hist="";sel=-1;valid="";lastF=-1;lastT=-1;document.getElementById('status').innerHTML="Undone";draw();}}
+
+for(var p=0;p<64;p++)(function(x){document.getElementById('cell'+x).onclick=function(){tapPos(x);};})(p);
+init();
+</script>
+</body>
+</html>
